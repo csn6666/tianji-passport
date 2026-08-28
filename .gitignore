@@ -1,0 +1,26 @@
+build/
+sdkconfig
+sdkconfig.old
+managed_components/
+dependencies.lock
+.vscode/
+
+# ── 本地配置与密钥:绝不入库 ──
+# 你的服务器地址与 token(照 chat_config.h.example 复制一份)
+main/chat_config.h
+# LLM / ASR / TTS 的 API key
+server/.env
+
+# ── 个人开发装置:通过 SSH 隧道让服务器远程指挥 Mac 烧录 ──
+# 只对特定的机器拓扑有意义,别人用 idf.py flash 就行,不入库
+tools/flash.sh
+tools/capture_log.sh
+tools/mac-bridge.sh
+tools/cycle.sh
+
+# ── 运行时产物 ──
+server/venv/
+server/voice.log
+__pycache__/
+*.pyc
+_llm_secret.h

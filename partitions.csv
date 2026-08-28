@@ -1,0 +1,7 @@
+# 天机 · 分区表(8MB Flash)。
+# app 扩到 4MB:两套全覆盖中文字体(正文16px + 书法28px)+ Wi-Fi 栈。
+# Name,     Type, SubType, Offset,  Size
+nvs,        data, nvs,     0x9000,  0x6000
+phy_init,   data, phy,     0xf000,  0x1000
+factory,    app,  factory, 0x10000, 4M
+storage,    data, spiffs,  ,        3M

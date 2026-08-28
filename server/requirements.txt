@@ -1,0 +1,14 @@
+# 基础(必装)
+websockets
+openai
+edge-tts
+zhconv
+
+# ASR_PROVIDER=local 时才需要(云端 ASR 可以不装,能省下约 500MB 模型)
+faster-whisper
+
+# 说明:
+# - 还需要系统里有 ffmpeg(TTS 的 mp3 -> PCM 转码):apt install ffmpeg
+# - lunar_python 只有生成端侧排盘表时才用到(tools/gen_bazi_tables.py),
+#   服务器排盘也依赖它:pip install lunar_python
+lunar_python
