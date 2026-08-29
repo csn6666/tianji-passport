@@ -51,60 +51,163 @@
 
 ---
 
-## 二、换 ASR / TTS（改两个函数）
+## 二、换 ASR / TTS
 
-后端只有两个函数是"语音"，`server/voice_server.py` 里：
+**ASR** = 语音识别，把人说的话转成文字。**TTS** = 语音合成，把文字念出来。
+设备自己做不了这两件事（ESP32-C3 跑不动），所以交给后端。
 
-```python
-async def transcribe_any(pcm: bytes) -> str
-    # 进:PCM s16le / 16kHz / 单声道 的原始字节
-    # 出:识别出来的文本
+### 先看你属于哪种情况
 
-async def tts_to_pcm(text: str) -> bytes
-    # 进:一句话
-    # 出:PCM s16le / 16kHz / 单声道 的原始字节
+| 你的情况 | 建议走哪条 | 花钱吗 |
+|---|---|---|
+| 只想赶紧跑起来试试 | **A. 默认配置**，什么都不用改 | 不花 |
+| 后端机器很弱（树莓派、老 NAS） | **B. OpenAI 兼容的云服务** | 按量，很便宜 |
+| 在国内，想要好的中文效果和低延迟 | **C. 国内云厂商** | 按量，一般有免费额度 |
+| 有自己的服务器，不想把语音发给第三方 | **D. 自建** | 不花，费电 |
+
+---
+
+### A. 默认配置（开箱即用，不花钱）
+
+`.env` 里什么都不改就是这套：
+
+```bash
+ASR_PROVIDER=local      # 本机跑 faster-whisper
+TTS_PROVIDER=edge       # 微软 edge-tts
 ```
 
-**协议、分片、ADPCM 压缩、与设备的握手全都不用动**——它们在这两个函数外面。
+- **ASR**：[faster-whisper](https://github.com/SYSTRAN/faster-whisper) 在你的后端机器上跑，
+  完全离线，不需要任何账号。首次启动会自动下模型（`small` 约 500MB）。
+  代价是吃 CPU——一句话大概要一两秒，机器弱的话更久。
+- **TTS**：edge-tts 调微软 Edge 浏览器的朗读接口，**免费、不需要密钥**，中文音色也不错。
+  它不是正式商用 API，稳定性看微软脸色，但个人玩足够了。
 
-内置了三种现成实现，用 `.env` 里的 `ASR_PROVIDER` / `TTS_PROVIDER` 切换：
+嫌慢可以把模型调小：`ASR_LOCAL_MODEL=base` 或 `tiny`（准确率会降）。
 
-| 值 | 说明 |
-|---|---|
-| `ASR_PROVIDER=local` | 本机跑 faster-whisper。免费，但吃 CPU，首次启动下约 500MB 模型 |
-| `ASR_PROVIDER=openai` | 任何 OpenAI 兼容的 `/audio/transcriptions` |
-| `TTS_PROVIDER=edge` | 微软 edge-tts，免费免密钥（默认） |
-| `TTS_PROVIDER=openai` | 任何 OpenAI 兼容的 `/audio/speech` |
+---
 
-### 接一个云厂商的原生接口
+### B. OpenAI 兼容的云服务（最省事的付费方案）
 
-照着下面的形状加一个分支就行。以 TTS 为例：
+很多服务商都提供跟 OpenAI 一样的接口，填几行配置就能用，**不用写代码**：
 
-```python
-async def tts_to_pcm(text: str) -> bytes:
-    if TTS_PROVIDER == "mycloud":
-        # 1. 调你的服务,拿到 mp3 / wav / 任意格式的字节
-        audio = await my_cloud_tts(text, voice=TTS_VOICE)
-        # 2. 交给下面已有的 ffmpeg 管道转成 PCM 16k 单声道
-        return await _to_pcm16k(audio)
-    ...
+```bash
+ASR_PROVIDER=openai
+ASR_BASE_URL=https://api.groq.com/openai/v1     # 换成你的服务商
+ASR_API_KEY=你的密钥
+ASR_MODEL=whisper-large-v3
+
+TTS_PROVIDER=openai
+TTS_BASE_URL=https://api.openai.com/v1
+TTS_API_KEY=你的密钥
+TTS_MODEL=tts-1
+TTS_VOICE=alloy
 ```
 
-现成的 mp3→PCM 转换（ffmpeg 子进程）就在同一个函数里，直接复用。
-ASR 那边同理：把音频交给你的服务，返回文本即可，`_pcm_to_wav()` 已经帮你
-封好了 WAV 头。
+常见的有 OpenAI 自家、Groq（whisper 很快）、硅基流动、以及不少国内厂商的兼容端点。
+**优先找服务商有没有"OpenAI 兼容"的说明**，有的话这条路最省事。
 
-### 一条硬约束：设备字库
+---
 
-**发给设备的文本必须落在设备字库内**（完整 GB2312）。设备的字库是编译进
-固件的位图，没有的字会显示成空白。
+### C. 国内云厂商（腾讯云 / 阿里云 / 百度）
 
-`for_device()` 已经处理了：繁体转简体，字库外的字符按映射表替换或丢弃。
-你新接的 ASR 返回的文本会自动过这一层——但如果你**绕过**了 `transcribe_any`
-自己发文本给设备，记得手动调用它。
+这些厂商的原生接口**不是 OpenAI 格式**，需要写一小段适配代码——大概二三十行。
+
+以腾讯云为例，它有现成的
+[语音识别 ASR](https://cloud.tencent.com/product/asr)（一句话识别 / 实时识别 / 录音文件识别）
+和 [语音合成 TTS](https://cloud.tencent.com/product/tts)，
+官方 Python SDK 在 [tencentcloud-speech-sdk-python](https://github.com/TencentCloud/tencentcloud-speech-sdk-python)。
+我们这个场景用「一句话识别」就够（每次录音都是几秒的短句）。
+
+阿里云叫「智能语音交互」，百度叫「短语音识别 / 语音合成」，形状都差不多。
+
+**怎么接**：`server/voice_server.py` 里已经留好了两个空函数，实现它们就行：
+
+```python
+async def custom_transcribe(pcm: bytes) -> str:
+    """进:PCM s16le 16kHz 单声道的原始字节。出:识别文本。"""
+    wav = _pcm_to_wav(pcm)          # 大多数服务要 WAV,这个帮你加好文件头
+    # ... 调你的 SDK,返回文本 ...
+    return text
+
+
+async def custom_tts(text: str) -> bytes:
+    """进:一句话。出:音频字节,mp3/wav 都行 —— 外层会用 ffmpeg
+    统一转成设备要的格式,采样率声道你都不用管。"""
+    # ... 调你的 SDK,返回音频字节 ...
+    return audio
+```
+
+然后在 `.env` 里：
+
+```bash
+ASR_PROVIDER=custom
+TTS_PROVIDER=custom
+```
+
+密钥怎么放随你（一般是 `SecretId` / `SecretKey` 之类），从环境变量读就行，
+`.env` 已经在 `.gitignore` 里了。
+
+**注意**：这两个函数是 `async` 的。厂商 SDK 多半是同步阻塞的，别直接调，
+否则会卡住整个后端。用线程池包一层：
+
+```python
+loop = asyncio.get_event_loop()
+text = await loop.run_in_executor(None, sdk_recognize_sync, wav)
+```
+
+（`transcribe_any` 里现成的 `local` 分支就是这么写的，照抄即可。）
+
+---
+
+### D. 自建（有自己的服务器）
+
+后端本来就是你自己的，"自建"就是把 ASR/TTS 也放在同一台机器上，
+语音数据完全不出你的服务器。
+
+- **ASR**：默认的 `local` 就是自建。有 GPU 的话把 faster-whisper 换成 GPU 模式
+  （改 `WhisperModel(..., device="cuda")`），速度快一个数量级。
+  也可以另跑一个 [whisper.cpp](https://github.com/ggerganov/whisper.cpp) 服务，
+  它自带 OpenAI 兼容的 HTTP 接口——那样直接走上面的 **B**，连代码都不用改。
+- **TTS**：可以跑本地合成引擎，把它包进 `custom_tts()` 即可。
+  中文可选的有 [Piper](https://github.com/rhasspy/piper)（轻量、CPU 就能跑）、
+  以及各种更重的模型。挑的时候注意两点：**能出 16kHz 单声道**（其实随便什么格式都行，
+  ffmpeg 会转）、以及**单句延迟**——设备是逐句合成的，每句慢一秒，整段就慢很多。
+
+后端不一定要公网服务器。树莓派、NAS、家里常开的旧电脑都行，**设备能访问到就够了**。
+
+---
+
+### 无论走哪条，都要过这一关：设备字库
+
+**发给设备的文本必须落在设备字库内**（完整 GB2312）。字库是编译进固件的位图，
+没有的字会显示成空白。
+
+`for_device()` 已经处理了：繁体转简体、字库外的字符按映射表替换或丢弃。
+`transcribe_any()` 的返回值会自动过这一层——但如果你**绕过它**自己发文本给设备，
+记得手动调用 `for_device()`。
 
 字库定义在 `server/device_charset.txt`，与固件里 `font_cn_16.c` 的生成参数同源。
-要支持更多字，得同时改这两处并重新生成字体。
+要支持更多字得同时改这两处并重新生成字体。
+
+---
+
+### 接完怎么验
+
+后端启动时会打出用的是哪套：
+
+```
+ASR: 本机 faster-whisper(small),加载中 ...
+TTS: edge (zh-CN-XiaoxiaoNeural)
+```
+
+然后对着设备说话，看后端日志：
+
+```
+问命 ASR: '我今年适合换工作吗'      ← ASR 通了
+合成: '从你的命盘来看...'           ← TTS 通了
+```
+
+设备上有字没声，多半是 TTS 那边报错了；说了话设备没反应，看 ASR 那行有没有出来。
 
 ---
 

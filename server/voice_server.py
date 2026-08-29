@@ -120,6 +120,30 @@ def J(obj, **_kw) -> str:
     return json.dumps(_sanitize(obj), ensure_ascii=False)
 
 
+# ════════════════════════════════════════════════════════════════════
+# 自定义接入点:腾讯云/阿里云/百度,或者你自建的服务,都从这两个函数接。
+# 在 .env 里设 ASR_PROVIDER=custom / TTS_PROVIDER=custom 即可启用。
+# 上面的 local / openai / edge 分支本身就是现成的写法参考。
+# 详细说明见 docs/INTEGRATIONS.md。
+# ════════════════════════════════════════════════════════════════════
+
+async def custom_transcribe(pcm: bytes) -> str:
+    """进:PCM s16le 16kHz 单声道的原始字节。出:识别文本。
+
+    很多服务要 WAV 而不是裸 PCM,用 _pcm_to_wav(pcm) 加个头即可。
+    """
+    raise NotImplementedError(
+        "ASR_PROVIDER=custom 需要你实现 custom_transcribe(),见 docs/INTEGRATIONS.md")
+
+
+async def custom_tts(text: str) -> bytes:
+    """进:一句话。出:音频字节,mp3 / wav / 什么格式都行 —— 外层会用
+    ffmpeg 统一转成设备要的 PCM,你不用管采样率和声道。
+    """
+    raise NotImplementedError(
+        "TTS_PROVIDER=custom 需要你实现 custom_tts(),见 docs/INTEGRATIONS.md")
+
+
 def _pcm_to_wav(pcm: bytes) -> bytes:
     buf = io.BytesIO()
     with wave.open(buf, "wb") as w:
@@ -140,7 +164,9 @@ def transcribe(pcm: bytes) -> str:
 
 
 async def transcribe_any(pcm: bytes) -> str:
-    """按 ASR_PROVIDER 走本机或云端。返回的文本一律过设备字库净化。"""
+    """按 ASR_PROVIDER 走本机/云端/自定义。返回的文本一律过设备字库净化。"""
+    if ASR_PROVIDER == "custom":
+        return for_device((await custom_transcribe(pcm)).strip())
     if ASR_PROVIDER == "openai":
         f = ("speech.wav", _pcm_to_wav(pcm), "audio/wav")
         r = await _asr_client.audio.transcriptions.create(
@@ -149,25 +175,32 @@ async def transcribe_any(pcm: bytes) -> str:
     return await asyncio.get_event_loop().run_in_executor(None, transcribe, pcm)
 
 
-async def tts_to_pcm(text: str) -> bytes:
-    """TTS 输出 mp3，用 ffmpeg 转成设备要的 PCM s16le 16k mono。"""
-    mp3 = bytearray()
-    if TTS_PROVIDER == "openai":
-        r = await _tts_client.audio.speech.create(
-            model=TTS_MODEL, voice=TTS_VOICE, input=text, response_format="mp3")
-        mp3.extend(r.read() if hasattr(r, "read") else r.content)
-    else:
-        async for chunk in edge_tts.Communicate(text, TTS_VOICE).stream():
-            if chunk["type"] == "audio":
-                mp3.extend(chunk["data"])
+async def _to_pcm16k(audio: bytes) -> bytes:
+    """任意音频格式(mp3/wav/...) -> 设备要的 PCM s16le 16k 单声道。走 ffmpeg。
+    自己接 TTS 时,拿到音频字节直接丢给它就行。"""
     proc = await asyncio.create_subprocess_exec(
         "ffmpeg", "-loglevel", "error", "-i", "pipe:0",
         "-f", "s16le", "-acodec", "pcm_s16le", "-ac", "1", "-ar", str(SAMPLE_RATE),
         "pipe:1",
         stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
     )
-    pcm, _ = await proc.communicate(bytes(mp3))
+    pcm, _ = await proc.communicate(audio)
     return pcm
+
+
+async def tts_to_pcm(text: str) -> bytes:
+    """一句话 -> PCM s16le 16k 单声道。换 TTS 服务改这里(见 docs/INTEGRATIONS.md)。"""
+    if TTS_PROVIDER == "custom":
+        return await _to_pcm16k(await custom_tts(text))
+    if TTS_PROVIDER == "openai":
+        r = await _tts_client.audio.speech.create(
+            model=TTS_MODEL, voice=TTS_VOICE, input=text, response_format="mp3")
+        return await _to_pcm16k(r.read() if hasattr(r, "read") else r.content)
+    mp3 = bytearray()
+    async for chunk in edge_tts.Communicate(text, TTS_VOICE).stream():
+        if chunk["type"] == "audio":
+            mp3.extend(chunk["data"])
+    return await _to_pcm16k(bytes(mp3))
 
 
 SENT_SPLIT = re.compile(r"(?<=[。！？；!?;\n])")

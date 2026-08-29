@@ -131,6 +131,8 @@ fortune: 送合成(待播2): 你今年这个丙午流年...            每句送
 | 文字出完才出声 | 你的 LLM 没开流式，或不支持 `stream: true` |
 | 今日页显示"正在校时" | SNTP 还没成功，设备没有 RTC |
 | 汉字显示成空白 | 那个字不在设备字库里，见 INTEGRATIONS.md 的字库一节 |
+| 说了话设备没反应 | 后端日志里没有 `问命 ASR:` 那行 → ASR 没通 |
+| `NotImplementedError: ASR_PROVIDER=custom ...` | 设了 `custom` 但没实现那两个函数 |
 
 后端日志在启动时会打出用的是哪套 ASR/TTS：
 
