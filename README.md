@@ -5,8 +5,11 @@
 **排盘完全在设备上算**——四柱、大运、流年流月、真太阳时校正，全部是确定性代码 +
 预烘的节气/朔日表，断网也能用，而且逐字段对得上专业排盘库。
 
-**LLM 由设备直接调用**，用你自己的 API key，key 在配网页里填、只存在设备的 NVS 里。
-后端只剩语音转换（听写 + 合成），**不需要任何 LLM 的 key**。
+**LLM 由设备直接调用**，用你自己的 API key。后端只剩语音转换（听写 + 合成），
+**不需要任何 LLM 的 key**。
+
+三样外部服务（LLM、语音识别、语音合成）都用你自己的账号，
+**烧录前先配好**——见下面的[烧录前要准备什么](#烧录前要准备什么)。
 
 > 基于 [FoloToy AI Passport](https://github.com/folotoy/ai-passport) 硬件与 BSP 改造。
 
@@ -64,12 +67,15 @@
               ┌─────────────────┐   ┌────────────────┐
               │  你的后端        │   │  你的 LLM       │
               │  听写 + 合成     │   │  只做解读       │
-              │  没有 LLM 密钥   │   │  密钥存设备 NVS │
+              │  没有 LLM 密钥   │   │  密钥编在固件里 │
               └─────────────────┘   └────────────────┘
 ```
 
-两处密钥**互不相见**：LLM 的密钥只在设备里，后端看不到；后端的 ASR/TTS 密钥只在后端，
-设备看不到。后端也**不需要任何 LLM 密钥**。
+两处密钥**互不相见**：LLM 的密钥编在固件里，后端看不到；后端的 ASR/TTS 密钥只在后端的
+`.env` 里，设备看不到。后端**不需要任何 LLM 密钥**。
+
+> 因为密钥编在固件里，**别把自己编好的 `.bin` 直接发给别人**——那等于把密钥一起发出去。
+> 每个人编译自己的固件，这也是为什么配置集中在 `main/chat_config.h` 一个文件里。
 
 ---
 
@@ -94,41 +100,61 @@ FoloToy AI Passport（ESP32-C3 + 240×320 SPI 屏 + ES8311 codec + CW2017 电量
 
 ---
 
+## 烧录前要准备什么
+
+设备本身不需要账号。但**说话**和**解读**这两件事要用外部服务，一共三样，
+都是你自己的账号。下面这张表先看个全貌：
+
+| | 干什么 | 在哪配 | 最省事的选择 |
+|---|---|---|---|
+| **LLM** | 写解盘文案、回答问事 | 固件 `main/chat_config.h` | 任何 OpenAI 兼容接口 |
+| **ASR** | 把你说的话转成字 | 后端 `server/.env` | 默认本机 whisper，免费 |
+| **TTS** | 把字念出来 | 后端 `server/.env` | 默认 edge-tts，免费免密钥 |
+
+**只有 LLM 必须自己去开通账号**，ASR/TTS 用默认配置就能跑（都是免费的）。
+
+### 1. LLM（必须，要花钱）
+
+去任何一家开通，拿到 base_url、API Key、模型名。要求两条：**OpenAI 兼容的
+`/chat/completions`**，并且**支持流式**（`stream: true`，否则语音会等整段说完才出声）。
+
+常见的有 DeepSeek、OpenAI、月之暗面、智谱、硅基流动；本地跑 Ollama / vLLM 也行
+（填局域网地址即可，那样连钱都不用花）。
+
+一轮问事大概几百 token，日常用一个月也就几块钱。
+
+### 2. ASR / TTS（有免费方案，可以先不管）
+
+默认配置**不需要任何账号**：ASR 用本机的 faster-whisper（首次启动自动下模型），
+TTS 用微软的 edge-tts（免费免密钥）。想跑得更快或者中文效果更好，有四条路：
+
+| 路径 | 适合谁 | 要写代码吗 |
+|---|---|---|
+| **A 默认** faster-whisper + edge-tts | 先跑起来试试 | 不用，免费 |
+| **B OpenAI 兼容** Groq / 硅基流动 等 | 后端机器弱（树莓派、NAS） | 不用，填配置 |
+| **C 国内云厂商** 腾讯云 / 阿里云 / 百度 | 要好的中文效果和低延迟 | 二三十行 |
+| **D 自建** GPU whisper / whisper.cpp / Piper | 语音不想出自己的服务器 | 看情况 |
+
+每条路具体怎么配、腾讯云用哪个产品、自建选什么引擎，见
+**[docs/INTEGRATIONS.md](docs/INTEGRATIONS.md)**。
+
+---
+
 ## 跑起来
 
-### 数据怎么走
+### 1. 后端（听写 + 合成）
 
-```
-录音 ──ws──> 后端听写 ──> 文本回设备
-设备 ──HTTPS──> 你自己的 LLM        ← key 存设备 NVS,后端看不到
-设备 ──ws──> 后端合成 ──> 音频回设备
-```
-
-### 1. 后端（只做语音）
-
-后端只负责听写和合成，**不需要 LLM 的 key**。可以跑在任何一台设备能访问到的机器上
-（云服务器、家里的小主机、树莓派都行）。
+跑在任何一台设备能访问到的机器上——云服务器、家里的小主机、树莓派、NAS 都行。
 
 ```bash
 cd server
 python3 -m venv venv && ./venv/bin/pip install -r requirements.txt
-sudo apt install ffmpeg          # TTS 的 mp3 转 PCM 要用
+sudo apt install ffmpeg          # 音频转码要用
 
 cp .env.example .env
-$EDITOR .env                     # 填 AUTH_TOKEN(和可选的 ASR/TTS 服务)
+$EDITOR .env                     # 至少改 AUTH_TOKEN;ASR/TTS 想用默认就不用动
 ./run.sh
 ```
-
-**后端要准备的**（一个都不含在本仓库里）：
-
-- **ASR 语音识别**（二选一）：
-  - `ASR_PROVIDER=local`（默认）——本机跑 faster-whisper，免费，但吃 CPU，
-    首次启动会下约 500MB 模型。小主机/树莓派上会很慢。
-  - `ASR_PROVIDER=openai`——用你自己的云端 ASR，任何 OpenAI 兼容的
-    `/audio/transcriptions` 都行（OpenAI、Groq、硅基流动、通义……）。
-    只填 `ASR_BASE_URL` / `ASR_API_KEY` / `ASR_MODEL` 即可；不填就复用 LLM 那组。
-- **TTS 语音合成**：默认 `edge`（微软 edge-tts，免费免 key）。也可以切
-  `TTS_PROVIDER=openai` 用你自己的。
 
 监听 8765。**建议用 nginx 反代到 80/443**——很多家庭网络会拦冷门端口：
 
@@ -148,29 +174,42 @@ location /tianji-voice {
 
 ```bash
 cp main/chat_config.h.example main/chat_config.h
-$EDITOR main/chat_config.h       # 填你的服务器地址,以及与 .env 里一致的 AUTH_TOKEN
+$EDITOR main/chat_config.h
+```
 
+这个文件是烧录前要填的**全部**配置，一共两块：
+
+```c
+// 你的后端在哪
+#define CHAT_SERVER_HOST "your-server.example.com"
+#define CHAT_SERVER_PORT 80
+#define CHAT_SERVER_PATH "/tianji-voice"
+#define CHAT_AUTH_TOKEN  "……"          // 与 server/.env 里的一模一样
+
+// 你的 LLM
+#define CHAT_LLM_BASE_URL "https://api.deepseek.com/v1"   // 到 /v1 为止
+#define CHAT_LLM_API_KEY  "sk-……"
+#define CHAT_LLM_MODEL    "deepseek-chat"
+```
+
+然后：
+
+```bash
 idf.py set-target esp32c3
 idf.py build flash monitor
 ```
 
-`main/chat_config.h` 和 `server/.env` 都在 `.gitignore` 里，不会被误提交。
+忘了复制 `chat_config.h` 的话，构建会直接停下并告诉你复制哪个文件，不会编到一半才炸。
 
-### 3. 首次开机 —— 填 Wi-Fi 和你自己的 AI 接口
+`chat_config.h` 和 `server/.env` 都在 `.gitignore` 里，不会被误提交。
 
-设备会开一个叫 `Tianji-Setup` 的热点，手机连上后自动弹出配置页（没弹就开
-`http://192.168.4.1`）。页面上两块：
+### 3. 首次开机：连 Wi-Fi
 
-| | |
-|---|---|
-| **Wi-Fi** | 名称 + 密码 |
-| **AI 服务** | 接口地址（如 `https://api.deepseek.com/v1`）、API Key、模型名 |
+设备开一个叫 `Tianji-Setup` 的热点，手机连上后自动弹出配网页
+（没弹就浏览器打开 `http://192.168.4.1`），填 Wi-Fi 名称和密码即可。
 
-任何 OpenAI 兼容的 `/chat/completions` 都行。**API Key 只写进设备的 NVS**，不进固件镜像、
-不经过后端、不上传任何地方；换 key 不用重新烧录，重新配一次即可。
-
-之后要换网络或换 key，在「设置」页按 OK 重新进配置页。只想改 AI 配置的话，
-Wi-Fi 两栏留空即可。
+**配网页只管 Wi-Fi。** 后端地址和 LLM 是编译时定好的，要换得改
+`main/chat_config.h` 重新烧录。之后要换网络，在「设置」页按 OK 重新配网。
 
 ---
 

@@ -24,6 +24,3 @@ void chat_prov_stop(void);
 
 // 由应用实现:Wi-Fi 凭据保存成功时被回调(在 httpd 任务上下文,勿阻塞)
 void chat_prov_on_saved(void);
-
-// 由应用实现:只更新了 AI 配置、没动 Wi-Fi 时被回调(同样勿阻塞)
-void chat_prov_on_llm_saved(void);

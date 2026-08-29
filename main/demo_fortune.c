@@ -462,7 +462,7 @@ static void settings_start_prov(void) {
     s_prov_saved = false;
     s_prov_gen = chat_net_gen();
     view_panel("配网",
-               "1. 手机连热点\n   Tianji-Setup\n2. 自动弹出配置页\n   (没弹就开 192.168.4.1)\n3. 选网络填密码",
+               "1. 手机连热点\n   Tianji-Setup\n2. 自动弹出配置页\n   (没弹就开 192.168.4.1)\n3. 填 Wi-Fi 名称密码",
                "连上后自动返回设置\n长按OK放弃", UI_INK);
     s_state = FS_SET_PROV;
     ui_status("等待手机配网", UI_YELLOW);
@@ -1155,7 +1155,7 @@ static void handle_json(const char *json) {
         if (t && t[0] && s_state == FS_ASK_THINKING) {
             if (!llm_start(false, t)) {
                 ask_append_answer(llm_cfg_ready() ? "上一个问题还在推演中"
-                                                  : "还没配 AI 服务,去设置页配网时填");
+                                                  : "还没配 LLM,见 main/chat_config.h");
                 s_state = FS_ASK_IDLE;
                 ui_status("OK再问", UI_RED);
             }
@@ -1278,11 +1278,6 @@ out:
 }
 
 // 配网页面保存成功回调(httpd 任务上下文;Wi-Fi 连接由配网模块自己发起)
-// 只改了 AI 配置:Wi-Fi 没动,不用等重连,原地提示一下就行
-void chat_prov_on_llm_saved(void) {
-    ui_status("AI配置已保存", UI_YELLOW);
-}
-
 void chat_prov_on_saved(void) {
     chat_net_creds_saved();
     s_prov_saved = true;               // FS_SET_PROV 下由 settings_tick 接管回程

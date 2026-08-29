@@ -11,16 +11,9 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-typedef struct {
-    char base_url[96];      // 如 https://api.deepseek.com/v1
-    char api_key[160];     // 有些家的 key 挺长,留够
-    char model[40];         // 如 deepseek-chat
-} llm_cfg_t;
-
-// NVS 存取。没配过时 llm_cfg_load 返回 false。
-bool llm_cfg_load(llm_cfg_t *out);
-void llm_cfg_save(const llm_cfg_t *cfg);
-bool llm_cfg_ready(void);   // 三项齐全才算配好
+// 配置全部来自编译期的 main/chat_config.h(见 README「烧录前要准备什么」)。
+// 三项都填好了才算就绪;还是模板里的占位值就返回 false。
+bool llm_cfg_ready(void);
 
 // 流式增量回调。text 是本次新增的片段(非累计),不保证按句切分。
 // 返回 false 可请求提前中止(比如用户打断)。

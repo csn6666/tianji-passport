@@ -12,7 +12,7 @@
 #include "esp_crt_bundle.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
-#include "nvs.h"
+#include "chat_config.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -22,7 +22,6 @@
 
 static const char *TAG = "llm";
 
-#define NVS_NS "llm"
 #define SSE_LINE_MAX 1024          // 单条 SSE 行的上限,超了就丢弃该行
 
 static char s_err[96];
@@ -31,33 +30,12 @@ const char *llm_last_error(void) { return s_err[0] ? s_err : NULL; }
 
 // ---------------------------------------------------------------- 配置
 
-bool llm_cfg_load(llm_cfg_t *out) {
-    memset(out, 0, sizeof(*out));
-    nvs_handle_t h;
-    if (nvs_open(NVS_NS, NVS_READONLY, &h) != ESP_OK) return false;
-    size_t n;
-    bool ok = true;
-    n = sizeof(out->base_url); if (nvs_get_str(h, "url", out->base_url, &n) != ESP_OK) ok = false;
-    n = sizeof(out->api_key);  if (nvs_get_str(h, "key", out->api_key, &n) != ESP_OK) ok = false;
-    n = sizeof(out->model);    if (nvs_get_str(h, "model", out->model, &n) != ESP_OK) ok = false;
-    nvs_close(h);
-    return ok && out->base_url[0] && out->api_key[0] && out->model[0];
-}
-
-void llm_cfg_save(const llm_cfg_t *cfg) {
-    nvs_handle_t h;
-    if (nvs_open(NVS_NS, NVS_READWRITE, &h) != ESP_OK) return;
-    nvs_set_str(h, "url", cfg->base_url);
-    nvs_set_str(h, "key", cfg->api_key);
-    nvs_set_str(h, "model", cfg->model);
-    nvs_commit(h);
-    nvs_close(h);
-    ESP_LOGI(TAG, "LLM 配置已保存: %s / %s", cfg->base_url, cfg->model);
-}
-
+// 还是模板里的占位值就当没配。这样忘了填的时候设备上会直接说"还没配 LLM",
+// 而不是拿着假 key 去撞一个 401。
 bool llm_cfg_ready(void) {
-    llm_cfg_t c;
-    return llm_cfg_load(&c);
+    return CHAT_LLM_BASE_URL[0] && CHAT_LLM_MODEL[0] &&
+           CHAT_LLM_API_KEY[0] && strncmp(CHAT_LLM_API_KEY, "sk-换成", 8) != 0 &&
+           strcmp(CHAT_LLM_API_KEY, "PLACEHOLDER") != 0;
 }
 
 // ---------------------------------------------------------------- SSE 解析
@@ -163,14 +141,13 @@ esp_err_t llm_chat(const char *system, const char *user, int max_tokens,
                    llm_delta_cb cb, void *user_ctx)
 {
     s_err[0] = '\0';
-    llm_cfg_t cfg;
-    if (!llm_cfg_load(&cfg)) {
-        snprintf(s_err, sizeof(s_err), "未配置 LLM");
+    if (!llm_cfg_ready()) {
+        snprintf(s_err, sizeof(s_err), "未配置 LLM,见 main/chat_config.h");
         return ESP_ERR_INVALID_STATE;
     }
 
-    char url[128];
-    snprintf(url, sizeof(url), "%s/chat/completions", cfg.base_url);
+    char url[160];
+    snprintf(url, sizeof(url), "%s/chat/completions", CHAT_LLM_BASE_URL);
 
     // 请求体:整段在堆上拼,不建 cJSON 树(省内存也省栈)
     const size_t BODY_CAP = 2560;
@@ -191,7 +168,7 @@ esp_err_t llm_chat(const char *system, const char *user, int max_tokens,
                      "{\"model\":\"%s\",\"stream\":true,\"max_tokens\":%d,"
                      "\"messages\":[{\"role\":\"system\",\"content\":\"%s\"},"
                      "{\"role\":\"user\",\"content\":\"%s\"}]}",
-                     cfg.model, max_tokens, esc_sys, esc_usr);
+                     CHAT_LLM_MODEL, max_tokens, esc_sys, esc_usr);
     free(esc_sys);
     free(esc_usr);
     if (n < 0 || (size_t)n >= BODY_CAP) {
@@ -227,14 +204,14 @@ esp_err_t llm_chat(const char *system, const char *user, int max_tokens,
             return ESP_FAIL;
         }
 
-        char auth[8 + sizeof(cfg.api_key)];
-        snprintf(auth, sizeof(auth), "Bearer %s", cfg.api_key);
+        char auth[16 + sizeof(CHAT_LLM_API_KEY)];
+        snprintf(auth, sizeof(auth), "Bearer %s", CHAT_LLM_API_KEY);
         esp_http_client_set_header(c, "Content-Type", "application/json");
         esp_http_client_set_header(c, "Authorization", auth);
         esp_http_client_set_header(c, "Accept", "text/event-stream");
         esp_http_client_set_post_field(c, body, n);
 
-        ESP_LOGI(TAG, "请求 %s (%s) 第%d次, 空闲堆=%u", url, cfg.model, attempt,
+        ESP_LOGI(TAG, "请求 %s (%s) 第%d次, 空闲堆=%u", url, CHAT_LLM_MODEL, attempt,
                  (unsigned)esp_get_free_heap_size());
         err = esp_http_client_perform(c);
         status = esp_http_client_get_status_code(c);
@@ -243,7 +220,6 @@ esp_err_t llm_chat(const char *system, const char *user, int max_tokens,
                  (unsigned)esp_get_free_heap_size(), sse.aborted ? " (被打断)" : "");
 
         esp_http_client_cleanup(c);
-        memset(auth, 0, sizeof(auth));     // 别把 key 留在栈上
 
 
         // 已经吐过字、或者用户主动打断、或者是服务端明确的拒绝,都不该重试

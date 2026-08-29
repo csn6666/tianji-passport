@@ -1,13 +1,15 @@
 // main/chat_config.h.example —— 复制成 chat_config.h 再改。
-// chat_config.h 已被 .gitignore 忽略,不会误提交你的服务器地址。
+// chat_config.h 已被 .gitignore 忽略,不会误提交你的地址和密钥。
 //
 //     cp main/chat_config.h.example main/chat_config.h
 //
-// Wi-Fi 不在这里配:设备用手机配网(热点 Tianji-Setup -> http://192.168.4.1),
-// 也可以开机后在「设置」页重新配网。
+// 这个文件是**烧录前**要填的全部配置。Wi-Fi 不在这里 —— 设备开机后
+// 用手机配网(热点 Tianji-Setup -> http://192.168.4.1),换网络也在那儿。
+//
+// 三样服务要准备什么、有哪些方案,见 README 的「烧录前要准备什么」一节。
 #pragma once
 
-// 你自己的语音后端(server/voice_server.py 跑在哪台机器上)。
+// ── 1. 语音后端(server/voice_server.py 跑在哪台机器上)──────────────
 // 填域名或公网 IP;局域网自测填电脑的内网地址也行。
 #define CHAT_SERVER_HOST "your-server.example.com"
 #define CHAT_SERVER_PORT 80
@@ -16,5 +18,16 @@
 // (冷门端口常被家庭网络拦,建议反代到 80/443)。
 #define CHAT_SERVER_PATH "/tianji-voice"
 
-// 必须与 server/.env 里的 AUTH_TOKEN 一致。换成一串随机字符。
+// 必须与 server/.env 里的 AUTH_TOKEN 一模一样。换成一串随机字符:
+//   python3 -c "import secrets; print(secrets.token_urlsafe(24))"
 #define CHAT_AUTH_TOKEN  "change-me-to-a-random-string"
+
+// ── 2. LLM(设备直接调,不经过后端)──────────────────────────────────
+// 任何 OpenAI 兼容的 /chat/completions 都行。地址填到 /v1 为止,
+// **不要**带 /chat/completions。必须支持流式(stream: true)。
+#define CHAT_LLM_BASE_URL "https://api.deepseek.com/v1"
+#define CHAT_LLM_API_KEY  "sk-换成你自己的"
+#define CHAT_LLM_MODEL    "deepseek-chat"
+
+// 注意:API Key 会编进固件镜像。这也是为什么每个人都该编译自己的固件,
+// 别把编好的 .bin 直接发给别人 —— 那等于把密钥一起发出去了。

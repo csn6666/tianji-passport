@@ -2,7 +2,6 @@
 // 设备开一个开放热点 Tianji-Setup,手机连上后浏览器打开 http://192.168.4.1,
 // 网页会列出附近 Wi-Fi,用户选择并填密码 -> 存 NVS -> 切回 STA 连接。
 #include "chat_provision.h"
-#include "llm_client.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -112,36 +111,27 @@ static void save_creds(const char *ssid, const char *pass) {
 static const char PAGE[] =
     "<!doctype html><html><head><meta charset=utf-8><meta name=viewport content=\x22width=dev"
     "ice-width,initial-scale=1\x22><title>\xe5\xa4\xa9\xe6\x9c\xba \xc2\xb7 \xe9\x85\x8d"
-    "\xe7\xbd\xae</title><style>body{font-family:sans-serif;max-width:420px;margin:24px auto;"
-    "padding:0 16px;color:#17202A}input,button{width:100%;box-sizing:border-box;font-size:17p"
-    "x;padding:11px;margin:6px 0;border:2px solid #17202A;border-radius:8px}button{background"
-    ":#82BE2D;font-weight:bold}h3{margin:22px 0 2px}small{color:#666;display:block;margin-bot"
-    "tom:6px;line-height:1.5}hr{border:none;border-top:1px dashed #bbb;margin:22px 0}</style>"
-    "</head><body><h2>\xe5\xa4\xa9\xe6\x9c\xba \xc2\xb7 \xe8\xae\xbe\xe5\xa4\x87\xe9\x85\x8d"
-    "\xe7\xbd\xae</h2><form method=POST action=/save><h3>Wi-Fi</h3><small>\xe5\x8f\xaa"
-    "\xe6\x83\xb3\xe6\x94\xb9\xe4\xb8\x8b\xe9\x9d\xa2\xe7\x9a\x84 AI \xe9\x85\x8d\xe7\xbd\xae"
-    "\xe6\x97\xb6\xef\xbc\x8c\xe8\xbf\x99\xe4\xb8\xa4\xe6\xa0\x8f\xe7\x95\x99\xe7\xa9\xba"
-    "\xe5\x8d\xb3\xe5\x8f\xaf\xe3\x80\x82</small><input name=ssid list=aps placeholder=\x22Wi"
-    "-Fi \xe5\x90\x8d\xe7\xa7\xb0\x22><datalist id=aps></datalist><input name=pass type=passw"
-    "ord placeholder=\x22Wi-Fi \xe5\xaf\x86\xe7\xa0\x81\x22><hr><h3>AI \xe6\x9c\x8d"
-    "\xe5\x8a\xa1</h3><small>\xe8\xa7\xa3\xe7\x9b\x98\xe5\x92\x8c\xe9\x97\xae\xe4\xba\x8b"
-    "\xe7\x94\xb1\xe8\xae\xbe\xe5\xa4\x87\xe7\x9b\xb4\xe6\x8e\xa5\xe8\xb0\x83\xe7\x94\xa8"
-    "\xef\xbc\x8c\xe7\x94\xa8\xe4\xbd\xa0\xe8\x87\xaa\xe5\xb7\xb1\xe7\x9a\x84\xe8\xb4\xa6"
-    "\xe5\x8f\xb7\xef\xbc\x8c\xe5\xaf\x86\xe9\x92\xa5\xe5\x8f\xaa\xe5\xad\x98\xe5\x9c\xa8"
-    "\xe8\xbf\x99\xe5\x8f\xb0\xe8\xae\xbe\xe5\xa4\x87\xe9\x87\x8c\xef\xbc\x8c\xe4\xb8\x8d"
-    "\xe4\xbc\x9a\xe4\xb8\x8a\xe4\xbc\xa0\xe5\x88\xb0\xe4\xbb\xbb\xe4\xbd\x95\xe5\x9c\xb0"
-    "\xe6\x96\xb9\xe3\x80\x82\xe4\xbb\xbb\xe4\xbd\x95 OpenAI \xe5\x85\xbc\xe5\xae\xb9"
-    "\xe6\x8e\xa5\xe5\x8f\xa3\xe9\x83\xbd\xe8\xa1\x8c\xe3\x80\x82\xe7\x95\x99\xe7\xa9\xba"
-    "\xe5\x88\x99\xe4\xb8\x8d\xe6\x94\xb9\xe5\x8a\xa8\xe5\xb7\xb2\xe4\xbf\x9d\xe5\xad\x98"
-    "\xe7\x9a\x84\xe9\x85\x8d\xe7\xbd\xae\xe3\x80\x82</small><input name=llm_url placeholder="
-    "\x22\xe6\x8e\xa5\xe5\x8f\xa3\xe5\x9c\xb0\xe5\x9d\x80\xef\xbc\x8c\xe5\xa6\x82 https://api"
-    ".deepseek.com/v1\x22><input name=llm_key type=password placeholder=\x22API Key\x22><inpu"
-    "t name=llm_model placeholder=\x22\xe6\xa8\xa1\xe5\x9e\x8b\xe5\x90\x8d\xef\xbc\x8c"
-    "\xe5\xa6\x82 deepseek-chat\x22><button>\xe4\xbf\x9d\xe5\xad\x98</button></form><p style="
-    "color:#666>\xe6\x8f\x90\xe4\xba\xa4\xe5\x90\x8e\xe7\x9c\x8b\xe8\xae\xbe\xe5\xa4\x87"
+    "\xe7\xbd\x91</title><style>body{font-family:sans-serif;max-width:420px;margin:32px auto;"
+    "padding:0 16px;color:#17202A}input,button{width:100%;box-sizing:border-box;font-size:18p"
+    "x;padding:12px;margin:8px 0;border:2px solid #17202A;border-radius:8px}button{background"
+    ":#82BE2D;font-weight:bold}small{color:#666;display:block;line-height:1.5;margin-top:14px"
+    "}</style></head><body><h2>\xe5\xa4\xa9\xe6\x9c\xba \xc2\xb7 \xe8\xbf\x9e\xe6\x8e\xa5 Wi-"
+    "Fi</h2><form method=POST action=/save><input name=ssid list=aps placeholder=\x22Wi-Fi "
+    "\xe5\x90\x8d\xe7\xa7\xb0\x22 required><datalist id=aps></datalist><input name=pass type="
+    "password placeholder=\x22Wi-Fi \xe5\xaf\x86\xe7\xa0\x81\x22><button>\xe4\xbf\x9d"
+    "\xe5\xad\x98\xe5\xb9\xb6\xe8\xbf\x9e\xe6\x8e\xa5</button></form><p style=color:#666>"
+    "\xe6\x8f\x90\xe4\xba\xa4\xe5\x90\x8e\xe8\xae\xbe\xe5\xa4\x87\xe4\xbc\x9a\xe8\x87\xaa"
+    "\xe5\x8a\xa8\xe8\xbf\x9e\xe6\x8e\xa5\xef\xbc\x8c\xe7\x9c\x8b\xe8\xae\xbe\xe5\xa4\x87"
     "\xe5\xb1\x8f\xe5\xb9\x95\xe7\xa1\xae\xe8\xae\xa4\xe7\xbb\x93\xe6\x9e\x9c\xe3\x80\x82</p>"
-    "<script>fetch('/scan').then(r=>r.json()).then(a=>{document.getElementById('aps').innerHT"
-    "ML=a.map(s=>'<option value=\x22'+s+'\x22>').join('')})</script></body></html>";
+    "<small>\xe5\x90\x8e\xe7\xab\xaf\xe5\x9c\xb0\xe5\x9d\x80\xe4\xb8\x8e AI \xe6\x9c\x8d"
+    "\xe5\x8a\xa1\xe6\x98\xaf\xe5\x9c\xa8\xe7\xbc\x96\xe8\xaf\x91\xe5\x9b\xba\xe4\xbb\xb6"
+    "\xe6\x97\xb6\xe9\x85\x8d\xe5\xa5\xbd\xe7\x9a\x84\xef\xbc\x88main/chat_config.h"
+    "\xef\xbc\x89\xef\xbc\x8c\xe8\xbf\x99\xe9\x87\x8c\xe5\x8f\xaa\xe7\xae\xa1 Wi-Fi"
+    "\xe3\x80\x82\xe8\xa6\x81\xe6\x8d\xa2\xe6\x9c\x8d\xe5\x8a\xa1\xe5\xbe\x97\xe6\x94\xb9"
+    "\xe9\x82\xa3\xe4\xb8\xaa\xe6\x96\x87\xe4\xbb\xb6\xe5\xb9\xb6\xe9\x87\x8d\xe6\x96\xb0"
+    "\xe7\x83\xa7\xe5\xbd\x95\xe3\x80\x82</small><script>fetch('/scan').then(r=>r.json()).the"
+    "n(a=>{document.getElementById('aps').innerHTML=a.map(s=>'<option value=\x22'+s+'\x22>')."
+    "join('')})</script></body></html>";
 
 static esp_err_t root_get(httpd_req_t *req) {
     httpd_resp_set_type(req, "text/html; charset=utf-8");
@@ -229,8 +219,7 @@ static void apply_task(void *arg) {
 }
 
 static esp_err_t save_post(httpd_req_t *req) {
-    // Wi-Fi 两栏 + 三个 AI 字段,url 编码后可能不短,而且 httpd_req_recv 允许短读
-    char body[1024] = { 0 };
+    char body[512] = { 0 };
     int total = 0;
     while (total < (int)sizeof(body) - 1) {
         int r = httpd_req_recv(req, body + total, sizeof(body) - 1 - total);
@@ -247,44 +236,12 @@ static esp_err_t save_post(httpd_req_t *req) {
     httpd_query_key_value(body, "pass", pass, sizeof(pass));
     url_decode(ssid);
     url_decode(pass);
-
-    // AI 配置:三项都填齐才写;任一为空视为"不改动"
-    llm_cfg_t llm = { 0 };
-    char key_raw[256] = { 0 };
-    httpd_query_key_value(body, "llm_url", llm.base_url, sizeof(llm.base_url));
-    httpd_query_key_value(body, "llm_model", llm.model, sizeof(llm.model));
-    httpd_query_key_value(body, "llm_key", key_raw, sizeof(key_raw));
-    url_decode(llm.base_url);
-    url_decode(llm.model);
-    url_decode(key_raw);
-    if (strlen(key_raw) >= sizeof(llm.api_key)) {
-        memset(key_raw, 0, sizeof(key_raw));     // 截断的 key 只会换来一个看不懂的 401
-        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "api key too long");
-    }
-    memcpy(llm.api_key, key_raw, strlen(key_raw) + 1);
-    memset(key_raw, 0, sizeof(key_raw));
-    bool llm_ok = llm.base_url[0] && llm.api_key[0] && llm.model[0];
-    if (llm_ok) {
-        // 末尾斜杠会拼出 //chat/completions,顺手削掉
-        size_t n = strlen(llm.base_url);
-        while (n > 0 && llm.base_url[n - 1] == '/') llm.base_url[--n] = '\0';
-        llm_cfg_save(&llm);
-    }
-    memset(&llm, 0, sizeof(llm));
-
-    bool wifi_ok = ssid[0] && strlen(ssid) <= 32 && strlen(pass) <= 64;
-    if (!wifi_ok && ssid[0]) {
+    if (!ssid[0] || strlen(ssid) > 32 || strlen(pass) > 64) {
         return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid ssid/pass");
     }
-    if (!wifi_ok && !llm_ok) {
-        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "nothing to save");
-    }
-    if (wifi_ok) {
-        ESP_LOGI(TAG, "收到配网: ssid=%s%s", ssid, llm_ok ? " + AI 配置" : "");
-        save_creds(ssid, pass);
-    } else {
-        ESP_LOGI(TAG, "只更新了 AI 配置");
-    }
+
+    ESP_LOGI(TAG, "收到配网: ssid=%s", ssid);
+    save_creds(ssid, pass);
 
     httpd_resp_set_type(req, "text/html; charset=utf-8");
     httpd_resp_send(req,
@@ -292,16 +249,12 @@ static esp_err_t save_post(httpd_req_t *req) {
         "<meta name=viewport content=\"width=device-width,initial-scale=1\">"
         "<body style=\"font-family:sans-serif;text-align:center;margin-top:80px\">"
         "<h2>\xE2\x9C\x85 \xE5\xB7\xB2\xE4\xBF\x9D\xE5\xAD\x98</h2>"
-        "<p>\xE7\x9C\x8B\xE8\xAE\xBE\xE5\xA4\x87\xE5\xB1\x8F\xE5\xB9\x95"
-        "\xE7\xA1\xAE\xE8\xAE\xA4\xE7\xBB\x93\xE6\x9E\x9C</p></body>",
+        "<p>\xE8\xAE\xBE\xE5\xA4\x87\xE6\xAD\xA3\xE5\x9C\xA8\xE8\xBF\x9E\xE6\x8E\xA5 Wi-Fi\xEF\xBC\x8C"
+        "\xE7\x9C\x8B\xE8\xAE\xBE\xE5\xA4\x87\xE5\xB1\x8F\xE5\xB9\x95\xE7\xA1\xAE\xE8\xAE\xA4</p></body>",
         HTTPD_RESP_USE_STRLEN);
 
-    if (wifi_ok) {
-        chat_prov_on_saved();
-        xTaskCreate(apply_task, "prov_apply", 3072, NULL, 5, NULL);
-    } else {
-        chat_prov_on_llm_saved();
-    }
+    chat_prov_on_saved();
+    xTaskCreate(apply_task, "prov_apply", 3072, NULL, 5, NULL);
     return ESP_OK;
 }
 
