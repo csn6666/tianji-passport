@@ -70,7 +70,7 @@ server/
 # 改了年份范围之类才需要重新生成
 server/venv/bin/python tools/gen_bazi_tables.py
 
-# 对拍:同一批生辰,C 引擎 vs Python 引擎,27 个字段逐一比对
+# 对拍:同一批生辰,C 引擎 vs Python 引擎,26 个字段逐一比对
 ./tools/verify_bazi.sh 4000
 ```
 

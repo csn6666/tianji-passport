@@ -12,6 +12,10 @@
 **烧录前先配好**——见下面的[烧录前要准备什么](#烧录前要准备什么)。
 
 > 基于 [FoloToy AI Passport](https://github.com/folotoy/ai-passport) 硬件与 BSP 改造。
+>
+> **用 AI 编程工具（Claude Code / Cursor 等）读这个仓库的话**，先看
+> [AGENTS.md](AGENTS.md) —— 那里列了硬性约束、命令、"想改什么就去哪"的对照表，
+> 以及一份症状→原因的排查表。
 
 ---
 
