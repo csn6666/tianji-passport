@@ -58,28 +58,89 @@
 
 ### 数据实际怎么走
 
+```mermaid
+flowchart LR
+    subgraph BACK["🖥️ 你的后端 —— 只做语音"]
+        direction TB
+        ASR["听写 ASR<br/><small>本机 whisper / 云服务</small>"]
+        TTS["合成 TTS<br/><small>edge-tts / 云服务</small>"]
+    end
+
+    subgraph DEV["📿 设备 · ESP32-C3 —— 全部推算都在这里"]
+        direction TB
+        ENGINE["<b>排盘引擎</b><br/>四柱 · 大运 · 流年流月流日<br/>农历 · 真太阳时 · 五行强弱<br/>幸运色 · 黄历宜忌"]
+        TABLE[("预烘数据表 50KB<br/>1900-2100 节气时刻<br/>农历朔日 · 黄历宜忌")]
+        UI["界面<br/>命盘 / 今日 / 问事 / 设置"]
+        TABLE -.-> ENGINE
+        ENGINE --> UI
+    end
+
+    subgraph CLOUD["☁️ 你的 LLM —— 只做解读"]
+        direction TB
+        LLM["绝不推算干支<br/><small>任何 OpenAI 兼容接口</small>"]
+    end
+
+    UI <==> BACK
+    UI <==> CLOUD
+
+    classDef devbox fill:#1F4E79,stroke:#D4AF37,stroke-width:2px,color:#fff
+    classDef backbox fill:#2E8B57,stroke:#17202A,color:#fff
+    classDef cloudbox fill:#C3272B,stroke:#17202A,color:#fff
+    classDef databox fill:#151B2E,stroke:#8A7429,color:#E8E3D3
+    class ENGINE,UI devbox
+    class ASR,TTS backbox
+    class LLM cloudbox
+    class TABLE databox
+    style DEV fill:#F5F0E1,stroke:#D4AF37,stroke-width:3px,color:#17202A
+    style BACK fill:#EAF5EE,stroke:#2E8B57,color:#17202A
+    style CLOUD fill:#FBEDED,stroke:#C3272B,color:#17202A
 ```
-                    ┌──────────────────────────────┐
-   说话 ──────────► │  设备 (ESP32-C3)             │
-                    │                              │
-                    │  排盘引擎:全部本地计算        │  ← 不联网
-                    │  节气/朔日表:烧在 flash 里    │
-                    └──┬────────────────────┬──────┘
-                       │ WebSocket          │ HTTPS(直连)
-                       │ (音频/文本)         │
-                       ▼                    ▼
-              ┌─────────────────┐   ┌────────────────┐
-              │  你的后端        │   │  你的 LLM       │
-              │  听写 + 合成     │   │  只做解读       │
-              │  没有 LLM 密钥   │   │  密钥编在固件里 │
-              └─────────────────┘   └────────────────┘
-```
+
+设备 ⇄ 后端走 WebSocket（录音换识别文本、逐句文本换音频）；
+设备 ⇄ LLM 是 HTTPS 直连，**不经过后端**。
 
 两处密钥**互不相见**：LLM 的密钥编在固件里，后端看不到；后端的 ASR/TTS 密钥只在后端的
 `.env` 里，设备看不到。后端**不需要任何 LLM 密钥**。
 
 > 因为密钥编在固件里，**别把自己编好的 `.bin` 直接发给别人**——那等于把密钥一起发出去。
 > 每个人编译自己的固件，这也是为什么配置集中在 `main/chat_config.h` 一个文件里。
+
+### 一次问事，从按下按键到出声
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as 命主
+    participant D as 设备
+    participant B as 后端
+    participant L as LLM
+
+    Note over D: 开机 1.0 秒即完成排盘<br/>不等网络，断网也有
+
+    U->>D: 按 OK，说"我今年适合换工作吗"
+    D->>B: 录音 PCM 分片
+    D->>B: 结束
+    B->>B: 听写
+    B-->>D: 识别文本
+    Note over D: 带上本地算好的命盘<br/>四柱 大运 五行 喜用神
+
+    D->>L: HTTPS 直连，流式提问
+    L-->>D: 第一句…
+    Note over D: t=2.1s 第一句成型
+    D->>B: 送这一句去合成
+    L-->>D: 后续句子持续到达<br/>屏幕逐字显示
+    B-->>D: 音频分片
+    Note over D: t=3.8s 开始出声<br/>文字还在往外冒
+
+    loop 每句：合成 → 播放 → 再要下一句
+        D->>B: 下一句
+        B-->>D: 音频
+    end
+    D->>U: 边显示边朗读
+```
+
+时间是真机实测的。关键在于**不等整段回答说完**：第一句一成型就送去合成，
+所以文字还在往外冒的时候，声音已经开始了。
 
 ---
 
